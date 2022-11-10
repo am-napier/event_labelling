@@ -1,0 +1,184 @@
+<form script="event_labels.js">
+  <label>Event Labelling</label>
+  <description>Narrow the time range and set an episode title pattern to match</description>
+  <init>
+    <unset token="start_time"></unset>
+    <unset token="end_time"></unset>
+  </init>
+  <!--row>
+    <panel>
+      <html>
+      <p>episode_id: $episode_id$</p>
+      <p>start_time: $start_time$</p>
+      <p>end_time: $end_time$</p>
+      <p>event_id: $event_id$</p>
+      <p>sev: $sev$</p>
+      <p>field1.earliest_epoch: $field1.earliest_epoch$</p>
+      <p>field1.latest_epoch: $field1.latest_epoch$</p>
+    </html>
+    </panel>
+  </row-->
+  <fieldset submitButton="false" autoRun="false"></fieldset>
+  <row>
+    <panel>
+      <title>Episode Selector - select an episode from the table below to explore its events itsi_group_id=$episode_id$ _raw="*$event_search$*"</title>
+      <input type="time" token="field1" searchWhenChanged="true">
+        <label></label>
+        <default>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </default>
+        <change>
+          <eval token="field1.earliest_epoch">if(isnum('earliest'),'earliest',relative_time(now(),'earliest')</eval>
+          <eval token="field1.latest_epoch">if(isnum('latest'),'latest',relative_time(now(),'latest')</eval>
+        </change>
+      </input>
+      <input type="text" token="episode_title" searchWhenChanged="true">
+        <label>Episode Title</label>
+        <default>*</default>
+        <initialValue>*</initialValue>
+      </input>
+      <table>
+        <search>
+          <query>| inputlookup itsi_notable_group_system_lookup where title=$episode_title|s$ 
+                 | eval START=$field1.earliest_epoch$, END=$field1.latest_epoch$
+                  | where start_time &lt;= START AND last_time &gt;= START
+                       OR
+                    start_time &lt;= END AND last_time &gt;= END 
+                       OR
+                    start_time &gt;= START AND last_time &lt;= END
+                       OR
+                    start_time &lt;= START AND last_time &gt;= END
+                    
+                    | lookup itsi_notable_group_user_lookup _key 
+                    | rename _key as itsi_group_id
+                    | eval start=strftime(start_time, "%F %T"), end=strftime(last_time, "%F %T")
+                    | eval severity=printf("%d-%s", severity, mvindex(split("-,Info,Normal,Low,Warning,High,Critical", ","), severity))
+                    | eval status=printf("%d-%s", status, mvindex(split("-,New,In progress,Pending,Resolved,Closed", ","), status))
+                    | sort + start_time
+                    | table title event_count, description, owner, start, end, status, severity, itsi_group_id, start_time, last_time
+                    | streamstats c </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <!--fields>["title","start_time","start","end","status","severity","event_count"]</fields-->
+        <drilldown>
+          <set token="episode_id">$row.itsi_group_id$</set>
+          <set token="start_time">$row.start_time$</set>
+          <set token="end_time">$row.last_time$</set>
+          <unset token="event_id"></unset>
+          <unset token="sev"></unset>
+        </drilldown>
+      </table>
+    </panel>
+    <panel depends="$episode_id$">
+      <title>Set the severity and optionally a text match in the event to search for specific events</title>
+      <input type="multiselect" token="sev_num">
+        <label>Severity(s)</label>
+        <fieldForLabel>severity label</fieldForLabel>
+        <fieldForValue>severity</fieldForValue>
+        <!--choice value="*">All</choice-->
+        <default>*</default>
+        <prefix>severity IN (</prefix>
+        <suffix>)</suffix>
+        <initialValue>*</initialValue>
+        <delimiter> ,</delimiter>
+        <search>
+          <query>index=itsi_grouped_alerts itsi_group_id=$episode_id$ _raw="*$event_search$*" earliest=$start_time$  latest=$end_time$
+                  | eval "severity label"=printf("%d-%s", severity, mvindex(split("Zero?,Info,Normal,Low,Warning,High,Critical", ","), severity))
+                  | stats c by severity, "severity label" 
+                  | append [| makeresults | eval severity="*", "severity label"="Any"]
+          </query>
+        </search>
+      </input>
+      <input type="text" token="event_search" searchWhenChanged="true">
+        <label>Event Search</label>
+        <default>*</default>
+        <initialValue>*</initialValue>
+      </input>
+      <table>
+        <search>
+          <query>index=itsi_grouped_alerts itsi_group_id=$episode_id$ _raw="*$event_search$*" earliest=$start_time$  latest=$end_time$ $sev_num$
+                | eval "severity label"=printf("%d-%s", severity, mvindex(split("Zero?,Info,Normal,Low,Warning,High,Critical", ","), severity))
+                | eval t=_time, t1=_time-10, t2=_time+10
+                | sort _time, itsi_group_count 
+                | table _time, *</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <fields>["_time","severity label","title","description","itsi_group_count","event_identifier_fields"]</fields>
+        <drilldown>
+          <set token="event_id">$row.event_id$</set>
+          <set token="start_time_2">$row.t1$</set>
+          <set token="end_time_2">$row.t2$</set>
+          <set token="event_time">$row.t$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$labels$,$severity$,$event_id$">
+    <panel>
+      <html>
+        <!-- the submit button for the page only shows when all fields are selected-->
+        <button id="publish_btn" class="btn btn-primary">Publish</button>
+    </html>
+    </panel>
+  </row>
+  <row depends="$episode_id$">
+    <panel depends="$event_id$">
+      <title>Select one or more labels and set the severity then publish this classification to the summary index</title>
+      <input type="dropdown" token="severity" searchWhenChanged="true">
+        <label>Severity</label>
+        <choice value="-">Use Original</choice>
+        <choice value="1">1-Info</choice>
+        <choice value="2">2-Normal</choice>
+        <choice value="3">3-Low</choice>
+        <choice value="4">4-Medium</choice>
+        <choice value="5">5-High</choice>
+        <choice value="6">6-Critical</choice>
+        <default>1</default>
+        <initialValue>1</initialValue>
+      </input>
+      <input type="multiselect" token="labels" searchWhenChanged="true">
+        <label>Labels</label>
+        <fieldForLabel>label</fieldForLabel>
+        <fieldForValue>tag</fieldForValue>
+        <search>
+          <query>| inputlookup episode_label_sources.csv</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <delimiter> </delimiter>
+        <valuePrefix>,</valuePrefix>
+      </input>
+      <input type="text" token="include_fields" searchWhenChanged="true">
+        <label>Include Fields</label>
+        <default>*</default>
+        <initialValue>*</initialValue>
+      </input>
+      <input type="text" token="exclude_fields" searchWhenChanged="true">
+        <label>Exclude Fields</label>
+        <default>_* orig_*</default>
+        <initialValue>_* orig_*</initialValue>
+      </input>
+      <table>
+        <title>Event Fields for $event_id$ at $event_time$</title>
+        <search>
+          <query>index=itsi_grouped_alerts itsi_group_id=$episode_id$ event_id=$event_id$ earliest=$start_time_2$ latest=$end_time_2$
+| fields - $exclude_fields$
+| fields $include_fields$
+| transpose
+| rename column as "Field", "row 1" as Value</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">100</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</form>

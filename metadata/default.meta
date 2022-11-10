@@ -1,0 +1,18 @@
+[]
+access = read : [ * ], write : [ admin, power ]
+export = none
+
+[tags]
+export = system
+
+[props]
+export = system
+
+[transforms]
+export = system
+
+[lookups]
+export = system
+
+[macros]
+export = system

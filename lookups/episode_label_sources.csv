@@ -1,0 +1,6 @@
+id,label,tag
+1,"root cause","root cause"
+2,urgent,urgent
+3,significant,significant
+4,interesting,interesting
+5,ignore,ignore

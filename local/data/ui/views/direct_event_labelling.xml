@@ -1,0 +1,165 @@
+<form script="event_labels.js">
+  <label>Direct Event Labelling</label>
+  <init>
+    <set token="event_time">0</set>
+    <set token="row_count">15</set>
+    <set token="script_state">loading...</set>
+  </init>
+  <search id="events_0">
+    <query>index=itsi_grouped_alerts event_id=$event_id$ | head 1 | eval epoch_timestamp=_time
+    </query>
+    <earliest>0</earliest>
+    <done>
+      <set token="event_time">$result.epoch_timestamp$</set>
+    </done>
+  </search>
+  <search id="setup_search">
+    <query>| makeresults | eval r1=printf("Rows 0 - %d", $row_count$), r2=printf("Rows %d - %d", $row_count$+1, $row_count$*2), r3=printf("Rows %d+", $row_count$*2)
+    </query>
+    <done>
+      <eval token="hdr1">tostring($result.r1$)</eval>
+      <eval token="hdr2">tostring($result.r2$)</eval>
+      <eval token="hdr3">tostring($result.r3$)</eval>
+    </done>
+  </search>
+  <search id="events">
+    <query>index=itsi_grouped_alerts event_id=$event_id$ | head 1 | eval epoch_timestamp=_time | fields - $exclude_fields$
+| fields $include_fields$
+| transpose
+| rename column as "Field", "row 1" as Value
+| streamstats count as row_num   
+    </query>
+  </search>
+  <fieldset submitButton="false" autoRun="false">
+    <input type="dropdown" token="severity" searchWhenChanged="true">
+      <label>Severity</label>
+      <choice value="-">Use Original</choice>
+      <choice value="1">1-Info</choice>
+      <choice value="2">2-Normal</choice>
+      <choice value="3">3-Low</choice>
+      <choice value="4">4-Medium</choice>
+      <choice value="5">5-High</choice>
+      <choice value="6">6-Critical</choice>
+      <default>1</default>
+      <initialValue>1</initialValue>
+      <change>
+        <set token="button_active">sev-changed</set>
+      </change>
+    </input>
+    <input type="multiselect" token="labels" searchWhenChanged="true">
+      <label>Labels</label>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>tag</fieldForValue>
+      <search>
+        <query>| inputlookup episode_label_sources.csv</query>
+      </search>
+      <delimiter>,</delimiter>
+      <change>
+        <set token="button_active">labels-changed</set>
+      </change>
+      <initialValue>$labels$</initialValue>
+    </input>
+    <input type="text" token="include_fields" searchWhenChanged="true">
+      <label>Include Fields</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="exclude_fields" searchWhenChanged="true">
+      <label>Exclude Fields</label>
+      <default>_* orig_* drill* itsi_group* splunk* host index punct</default>
+      <initialValue>_* orig_* drill* itsi_group* splunk* host index punct</initialValue>
+      <prefix>epoch_timestamp </prefix>
+    </input>
+    <input type="checkbox" token="debug" searchWhenChanged="true">
+      <label>debug</label>
+      <choice value="1">enabled</choice>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Select one or more labels, set the severity then publish this classification for later use in classification</title>
+      <html>All keys must be present in the page for the collection update to run, check the debug toggle above to verify.</html>
+      <html depends="$debug$">
+          <ul>
+            <li>event_id : $event_id$</li>
+            <li>event_correlation_key : $event_correlation_key$</li>
+            <li>user_name : $env:user$</li>
+            <li>event_time : $event_time$</li>
+            <li>labels : $labels$</li>
+            <li>Script State : $script_state$</li>
+          </ul>
+        </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title></title>
+      <table>
+        <title>Current classifications defined in the itoa_event_labels collection</title>
+        <search>
+          <query>| inputlookup itoa_event_labels where _key=$event_id$
+| rename _key as event_id
+| eval time=strftime(event_time, "%F %T"), labels=split(labels, ",")
+| table time labels severity user_name event_time event_id
+| append [| makeresults | eval label="No record was found for the event '$event_id$' in the collection itoa_event_labels, please add one if required." | fields - _time]
+| head 1</query>
+          <!--earliest>$earliest$</earliest>
+          <latest>$latest$</latest-->
+          <!--done>
+            <condition>
+              <eval token="labels">if(isnull($result.labels$), null(), $result.labels$)</eval>
+            </condition>
+          </done-->
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>$hdr1$</title>
+        <search base="events">
+          <query>| where row_num &lt;= $row_count$ | fields - xrow_num </query>
+        </search>
+        <option name="count">$row_count$</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <title></title>
+      <table>
+        <title>$hdr2$</title>
+        <search base="events">
+          <query>| where row_num &gt; $row_count$ AND row_num &lt;= $row_count$*2 | fields - xrow_num </query>
+        </search>
+        <option name="count">$row_count$</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <title></title>
+      <table>
+        <title>$hdr3$</title>
+        <search base="events">
+          <query>| where row_num &gt; $row_count$*2 | fields - xrow_num </query>
+        </search>
+        <option name="count">$row_count$</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>This is the output from last record update into itoa_event_labels collection</title>
+      <table>
+        <title>event_labels</title>
+        <search base="event_labels">
+          <query>| table *</query>
+        </search>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,26 @@
+[app/ui]
+version = 8.2.7.1
+modtime = 1666248927.694016000
+
+[app/launcher]
+version = 8.2.7.1
+modtime = 1666248927.695436000
+
+[views/event_labelling]
+access = read : [ * ]
+export = system
+owner = admin
+version = 8.2.7.1
+modtime = 1666376107.262907000
+
+[transforms/itoa_event_labels]
+access = read : [ * ], write : [ itoa_analyst ]
+export = system
+owner = admin
+version = 8.2.7.1
+modtime = 1666282038.081590000
+
+[views/direct_event_labelling]
+owner = admin
+version = 8.2.6
+modtime = 1666872659.864511000
